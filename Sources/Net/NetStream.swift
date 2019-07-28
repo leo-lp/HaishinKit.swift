@@ -12,7 +12,7 @@ protocol NetStreamDrawable: class {
 
 // MARK: -
 open class NetStream: NSObject {
-    public private(set) var mixer: AVMixer = AVMixer()
+    public private(set) var mixer = AVMixer()
     private static let queueKey = DispatchSpecificKey<UnsafeMutableRawPointer>()
     private static let queueValue = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
     public let lockQueue = ({ () -> DispatchQueue in
@@ -26,7 +26,7 @@ open class NetStream: NSObject {
         NotificationCenter.default.removeObserver(self)
     }
 
-    open var metadata: [String: Any?] = [: ]
+    open var metadata: [String: Any?] = [:]
 
     open var context: CIContext? {
         get {
@@ -61,9 +61,9 @@ open class NetStream: NSObject {
                 return
             }
             if syncOrientation {
-                NotificationCenter.default.addObserver(self, selector: #selector(on), name: .UIDeviceOrientationDidChange, object: nil)
+                NotificationCenter.default.addObserver(self, selector: #selector(on), name: UIDevice.orientationDidChangeNotification, object: nil)
             } else {
-                NotificationCenter.default.removeObserver(self, name: .UIDeviceOrientationDidChange, object: nil)
+                NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
             }
         }
     }
@@ -73,7 +73,7 @@ open class NetStream: NSObject {
         get {
             var audioSettings: [String: Any]!
             ensureLockQueue {
-                audioSettings = self.mixer.audioIO.encoder.dictionaryWithValues(forKeys: AACEncoder.supportedSettingsKeys)
+                audioSettings = self.mixer.audioIO.encoder.dictionaryWithValues(forKeys: AudioConverter.supportedSettingsKeys)
             }
             return  audioSettings
         }
@@ -160,7 +160,7 @@ open class NetStream: NSObject {
     }
 #endif
 
-    open func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer, withType: CMSampleBufferType, options: [NSObject: AnyObject]? = nil) {
+    open func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer, withType: AVMediaType, options: [NSObject: AnyObject]? = nil) {
         switch withType {
         case .audio:
             mixer.audioIO.lockQueue.async {
@@ -170,15 +170,33 @@ open class NetStream: NSObject {
             mixer.videoIO.lockQueue.async {
                 self.mixer.videoIO.appendSampleBuffer(sampleBuffer)
             }
+        default:
+            break
         }
     }
 
-    open func registerEffect(video effect: VisualEffect) -> Bool {
-        return mixer.videoIO.registerEffect(effect)
+    open func registerVideoEffect(_ effect: VideoEffect) -> Bool {
+        return mixer.videoIO.lockQueue.sync {
+            self.mixer.videoIO.registerEffect(effect)
+        }
     }
 
-    open func unregisterEffect(video effect: VisualEffect) -> Bool {
-        return mixer.videoIO.unregisterEffect(effect)
+    open func unregisterVideoEffect(_ effect: VideoEffect) -> Bool {
+        return mixer.videoIO.lockQueue.sync {
+            self.mixer.videoIO.unregisterEffect(effect)
+        }
+    }
+
+    open func registerAudioEffect(_ effect: AudioEffect) -> Bool {
+        return mixer.audioIO.lockQueue.sync {
+            self.mixer.audioIO.registerEffect(effect)
+        }
+    }
+
+    open func unregisterAudioEffect(_ effect: AudioEffect) -> Bool {
+        return mixer.audioIO.lockQueue.sync {
+            self.mixer.audioIO.unregisterEffect(effect)
+        }
     }
 
     open func dispose() {
@@ -188,7 +206,8 @@ open class NetStream: NSObject {
     }
 
     #if os(iOS)
-    @objc private func on(uiDeviceOrientationDidChange: Notification) {
+    @objc
+    private func on(uiDeviceOrientationDidChange: Notification) {
         if let orientation: AVCaptureVideoOrientation = DeviceUtil.videoOrientation(by: uiDeviceOrientationDidChange) {
             self.orientation = orientation
         }

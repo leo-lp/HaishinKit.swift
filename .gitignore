@@ -1,6 +1,5 @@
 *.xcodeproj/xcuserdata/*
 *.xcworkspace/xcuserdata/*
-docs
 build
 *.xccheckout
 *.moved-aside
@@ -21,3 +20,6 @@ Cartfile.resolved
 Carthage/*
 
 Package.resolved
+HaishinKit.xcodeproj/project.xcworkspace/xcuserdata/shogo.xcuserdatad/WorkspaceSettings.xcsettings
+*.xcsettings
+docs/undocumented.json

@@ -1,11 +1,12 @@
-import HaishinKit
+import AVFoundation
 import CoreImage
 import Foundation
+import HaishinKit
 
-final class MonochromeEffect: VisualEffect {
+final class MonochromeEffect: VideoEffect {
     let filter: CIFilter? = CIFilter(name: "CIColorMonochrome")
 
-    override func execute(_ image: CIImage) -> CIImage {
+    override func execute(_ image: CIImage, info: CMSampleBuffer?) -> CIImage {
         guard let filter: CIFilter = filter else {
             return image
         }

@@ -13,7 +13,7 @@ open class NetService: NSObject {
     public private(set) var name: String
     public private(set) var port: Int32
     public private(set) var type: String
-    public private(set) var running = false
+    public private(set) var isRunning: Atomic<Bool> = .init(false)
     public private(set) var clients: [NetClient] = []
     private(set) var service: Foundation.NetService!
     private var runloop: RunLoop!
@@ -27,7 +27,7 @@ open class NetService: NSObject {
 
     func disconnect(_ client: NetClient) {
         lockQueue.sync {
-            guard let index: Int = clients.index(of: client) else {
+            guard let index: Int = clients.firstIndex(of: client) else {
                 return
             }
             clients.remove(at: index)
@@ -44,7 +44,7 @@ open class NetService: NSObject {
 
     func willStopRunning() {
         if let runloop: RunLoop = runloop {
-            service.remove(from: runloop, forMode: .defaultRunLoopMode)
+            service.remove(from: runloop, forMode: RunLoop.Mode.default)
             CFRunLoopStop(runloop.getCFRunLoop())
         }
         service.stop()
@@ -58,7 +58,7 @@ open class NetService: NSObject {
         service = Foundation.NetService(domain: domain, type: type, name: name, port: port)
         service.delegate = self
         service.setTXTRecord(txtData)
-        service.schedule(in: runloop, forMode: .defaultRunLoopMode)
+        service.schedule(in: runloop, forMode: RunLoop.Mode.default)
         if type.contains("._udp") {
             service.publish()
         } else {
@@ -72,7 +72,7 @@ extension NetService: NetServiceDelegate {
     // MARK: NSNetServiceDelegate
     public func netService(_ sender: Foundation.NetService, didAcceptConnectionWith inputStream: InputStream, outputStream: OutputStream) {
         lockQueue.sync {
-            let client: NetClient = NetClient(service: sender, inputStream: inputStream, outputStream: outputStream)
+            let client = NetClient(service: sender, inputStream: inputStream, outputStream: outputStream)
             clients.append(client)
             client.delegate = self
             client.acceptConnection()
@@ -86,23 +86,23 @@ extension NetService: NetClientDelegate {
 
 extension NetService: Running {
     // MARK: Runnbale
-    final public func startRunning() {
+    public func startRunning() {
         lockQueue.async {
-            if self.running {
+            if self.isRunning.value {
                 return
             }
             self.willStartRunning()
-            self.running = true
+            self.isRunning.mutate { $0 = true }
         }
     }
 
-    final public func stopRunning() {
+    public func stopRunning() {
         lockQueue.async {
-            if !self.running {
+            if !self.isRunning.value {
                 return
             }
             self.willStopRunning()
-            self.running = false
+            self.isRunning.mutate { $0 = false }
         }
     }
 }

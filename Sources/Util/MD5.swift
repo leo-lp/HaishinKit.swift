@@ -4,8 +4,8 @@ import Foundation
  Message Digest Algorithm 5
 
  - seealso:
-  - https: //ja.wikipedia.org/wiki/MD5
-  - https: //www.ietf.org/rfc/rfc1321.txt
+  - https://ja.wikipedia.org/wiki/MD5
+  - https://www.ietf.org/rfc/rfc1321.txt
  */
 final class MD5 {
 
@@ -66,7 +66,7 @@ final class MD5 {
 
         mutating func II(_ x: UInt32, _ s: UInt32, _ k: UInt32) {
             let swap: UInt32 = d
-            let I: UInt32 =  c ^ (b | (~d))
+            let I: UInt32 = c ^ (b | (~d))
             d = c
             c = b
             b = b &+ rotateLeft(a &+ I &+ k &+ x, s)
@@ -91,10 +91,10 @@ final class MD5 {
     }
 
     static func calculate(_ data: Data) -> Data {
-        var context: Context = Context()
+        var context = Context()
 
         let count: Data = UInt64(data.count * 8).bigEndian.data
-        let message: ByteArray = ByteArray(data: data + [0x80])
+        let message = ByteArray(data: data + [0x80])
         message.length += 64 - (message.length % 64)
         message[message.length - 8] = count[7]
         message[message.length - 7] = count[6]
@@ -112,7 +112,7 @@ final class MD5 {
                 return
             }
 
-            var ctx: Context = Context()
+            var ctx = Context()
             ctx.a = context.a
             ctx.b = context.b
             ctx.c = context.c

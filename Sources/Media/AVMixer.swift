@@ -6,21 +6,45 @@ import AVFoundation
     }
 #endif
 
-final public class AVMixer: NSObject {
+protocol AVMixerDelegate: class {
+    func didOutputAudio(_ buffer: AVAudioPCMBuffer, presentationTimeStamp: CMTime)
+    func didOutputVideo(_ buffer: CMSampleBuffer)
+}
 
+public class AVMixer: NSObject {
+    public static let bufferEmpty: Notification.Name = .init("AVMixerBufferEmpty")
+
+    public static let defaultFPS: Float64 = 30
+    public static let defaultVideoSettings: [NSString: AnyObject] = [
+        kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_32BGRA)
+    ]
+
+    #if os(iOS)
+    static let supportedSettingsKeys: [String] = [
+        "fps",
+        "sessionPreset",
+        "continuousAutofocus",
+        "continuousExposure",
+        "preferredVideoStabilizationMode"
+    ]
+
+    @objc var preferredVideoStabilizationMode: AVCaptureVideoStabilizationMode {
+        get { return videoIO.preferredVideoStabilizationMode }
+        set { videoIO.preferredVideoStabilizationMode = newValue }
+    }
+    #elseif os(macOS)
     static let supportedSettingsKeys: [String] = [
         "fps",
         "sessionPreset",
         "continuousAutofocus",
         "continuousExposure"
     ]
-
-    static let defaultFPS: Float64 = 30
-    static let defaultVideoSettings: [NSString: AnyObject] = [
-        kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_32BGRA)
+    #else
+    static let supportedSettingsKeys: [String] = [
     ]
-#if os(iOS) || os(macOS)
+    #endif
 
+    #if os(iOS) || os(macOS)
     @objc var fps: Float64 {
         get { return videoIO.fps }
         set { videoIO.fps = newValue }
@@ -60,40 +84,65 @@ final public class AVMixer: NSObject {
             _session = newValue
         }
     }
-#endif
-    public private(set) lazy var recorder = AVMixerRecorder()
+    #endif
+
+    weak var delegate: AVMixerDelegate?
+
+    private var _recorder: AVRecorder?
+    /// The recorder instance.
+    public var recorder: AVRecorder! {
+        if _recorder == nil {
+            _recorder = AVRecorder()
+        }
+        return _recorder
+    }
+
+    private var _audioIO: AudioIOComponent?
+    var audioIO: AudioIOComponent! {
+        if _audioIO == nil {
+            _audioIO = AudioIOComponent(mixer: self)
+        }
+        return _audioIO!
+    }
+
+    private var _videoIO: VideoIOComponent?
+    var videoIO: VideoIOComponent! {
+        if _videoIO == nil {
+            _videoIO = VideoIOComponent(mixer: self)
+        }
+        return _videoIO!
+    }
 
     deinit {
         dispose()
     }
 
-    private(set) lazy var audioIO: AudioIOComponent = {
-       return AudioIOComponent(mixer: self)
-    }()
-
-    private(set) lazy var videoIO: VideoIOComponent = {
-       return VideoIOComponent(mixer: self)
-    }()
-
     public func dispose() {
 #if os(iOS) || os(macOS)
-        if session.isRunning {
+        if let session = _session, session.isRunning {
             session.stopRunning()
         }
 #endif
-        audioIO.dispose()
-        videoIO.dispose()
+        _audioIO?.dispose()
+        _audioIO = nil
+        _videoIO?.dispose()
+        _videoIO = nil
+    }
+
+    func didBufferEmpty(_ component: IOComponent) {
+        NotificationCenter.default.post(.init(name: AVMixer.bufferEmpty))
     }
 }
 
 extension AVMixer {
-    final func startEncoding(delegate: Any) {
+    public func startEncoding(delegate: Any) {
         videoIO.encoder.delegate = delegate as? VideoEncoderDelegate
         videoIO.encoder.startRunning()
-        audioIO.encoder.delegate = delegate as? AudioEncoderDelegate
+        audioIO.encoder.delegate = delegate as? AudioConverterDelegate
         audioIO.encoder.startRunning()
     }
-    final func stopEncoding() {
+
+    public func stopEncoding() {
         videoIO.encoder.delegate = nil
         videoIO.encoder.stopRunning()
         audioIO.encoder.delegate = nil
@@ -102,25 +151,30 @@ extension AVMixer {
 }
 
 extension AVMixer {
-    final func startPlaying() {
-        audioIO.playback.startRunning()
+    public func startPlaying(_ audioEngine: AVAudioEngine?) {
+        audioIO.audioEngine = audioEngine
+        audioIO.encoder.delegate = audioIO
         videoIO.queue.startRunning()
+        videoIO.decoder.startRunning()
     }
-    final func stopPlaying() {
-        audioIO.playback.stopRunning()
+
+    public func stopPlaying() {
+        audioIO.audioEngine = nil
+        audioIO.encoder.delegate = nil
         videoIO.queue.stopRunning()
+        videoIO.decoder.stopRunning()
     }
 }
 
 #if os(iOS) || os(macOS)
 extension AVMixer: Running {
     // MARK: Running
-    var running: Bool {
-        return session.isRunning
+    public var isRunning: Atomic<Bool> {
+        return .init(session.isRunning)
     }
 
-    final func startRunning() {
-        guard !running else {
+    public func startRunning() {
+        guard !isRunning.value else {
             return
         }
         DispatchQueue.global(qos: .userInteractive).async {
@@ -128,8 +182,8 @@ extension AVMixer: Running {
         }
     }
 
-    final func stopRunning() {
-        guard running else {
+    public func stopRunning() {
+        guard isRunning.value else {
             return
         }
         session.stopRunning()
@@ -138,12 +192,14 @@ extension AVMixer: Running {
 #else
 extension AVMixer: Running {
     // MARK: Running
-    var running: Bool {
-        return false
+    public var isRunning: Atomic<Bool> {
+        return .init(false)
     }
-    final func startRunning() {
+
+    public func startRunning() {
     }
-    final func stopRunning() {
+
+    public func stopRunning() {
     }
 }
 #endif

@@ -17,7 +17,7 @@ public class MP4Sampler {
     private let lockQueue = DispatchQueue(label: "com.haishinkit.HaishinKit.MP4Sampler.lock")
     private let loopQueue = DispatchQueue(label: "com.haishinkit.HaishinKit.MP4Sampler.loop")
     private let operations = OperationQueue()
-    private(set) var running: Bool = false
+    public private(set) var isRunning: Atomic<Bool> = .init(false)
 
     func appendFile(_ file: URL, completionHandler: Handler? = nil) {
         lockQueue.async {
@@ -27,7 +27,7 @@ public class MP4Sampler {
     }
 
     private func execute(url: URL) {
-        let reader: MP4Reader = MP4Reader(url: url)
+        let reader = MP4Reader(url: url)
 
         do {
             _ = try reader.load()
@@ -39,7 +39,7 @@ public class MP4Sampler {
         delegate?.didOpen(reader)
         let traks: [MP4Box] = reader.getBoxes(byName: "trak")
         for i in 0..<traks.count {
-            let trakReader: MP4TrakReader = MP4TrakReader(id: i, trak: traks[i])
+            let trakReader = MP4TrakReader(id: i, trak: traks[i])
             trakReader.delegate = delegate
             operations.addOperation {
                 trakReader.execute(reader)
@@ -65,10 +65,10 @@ public class MP4Sampler {
 
 extension MP4Sampler: Running {
     // MARK: Running
-    final func startRunning() {
+    public func startRunning() {
         loopQueue.async {
-            self.running = true
-            while self.running {
+            self.isRunning.mutate { $0 = true }
+            while self.isRunning.value {
                 self.lockQueue.sync {
                     self.run()
                     if self.files.isEmpty {
@@ -79,9 +79,9 @@ extension MP4Sampler: Running {
         }
     }
 
-    final func stopRunning() {
+    public func stopRunning() {
         lockQueue.async {
-            self.running = false
+            self.isRunning.mutate { $0 = false }
         }
     }
 }

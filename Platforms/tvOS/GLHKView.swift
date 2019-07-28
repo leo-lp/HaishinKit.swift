@@ -1,12 +1,13 @@
-import GLKit
 import AVFoundation
+import GLKit
 
 open class GLHKView: GLKView {
     static let defaultOptions: [String: AnyObject] = [
-        kCIContextWorkingColorSpace: NSNull(),
-        kCIContextUseSoftwareRenderer: NSNumber(value: false)
+        convertFromCIContextOption(CIContextOption.workingColorSpace): NSNull(),
+        convertFromCIContextOption(CIContextOption.useSoftwareRenderer): NSNumber(value: false)
     ]
-    open static var defaultBackgroundColor: UIColor = .black
+    public static var defaultBackgroundColor: UIColor = .black
+
     open var videoGravity: AVLayerVideoGravity = .resizeAspect
     private var displayImage: CIImage?
     private weak var currentStream: NetStream? {
@@ -15,28 +16,29 @@ open class GLHKView: GLKView {
         }
     }
 
-    public override init(frame: CGRect) {
+    override public init(frame: CGRect) {
         super.init(frame: frame, context: EAGLContext(api: .openGLES2)!)
         awakeFromNib()
     }
 
-    required public init?(coder aDecoder: NSCoder) {
+    public required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
         self.context = EAGLContext(api: .openGLES2)!
     }
 
-    open override func awakeFromNib() {
+    override open func awakeFromNib() {
+        super.awakeFromNib()
         enableSetNeedsDisplay = true
         backgroundColor = GLHKView.defaultBackgroundColor
         layer.backgroundColor = GLHKView.defaultBackgroundColor.cgColor
     }
 
-    open override func draw(_ rect: CGRect) {
+    override open func draw(_ rect: CGRect) {
         glClear(GLbitfield(GL_COLOR_BUFFER_BIT))
         guard let displayImage: CIImage = displayImage else {
             return
         }
-        var inRect: CGRect = CGRect(x: 0, y: 0, width: CGFloat(drawableWidth), height: CGFloat(drawableHeight))
+        var inRect = CGRect(x: 0, y: 0, width: CGFloat(drawableWidth), height: CGFloat(drawableHeight))
         var fromRect: CGRect = displayImage.extent
         VideoGravityUtil.calculate(videoGravity, inRect: &inRect, fromRect: &fromRect)
         currentStream?.mixer.videoIO.context?.draw(displayImage, in: inRect, from: fromRect)
@@ -45,7 +47,7 @@ open class GLHKView: GLKView {
     open func attachStream(_ stream: NetStream?) {
         if let stream: NetStream = stream {
             stream.lockQueue.async {
-                stream.mixer.videoIO.context = CIContext(eaglContext: self.context, options: GLHKView.defaultOptions)
+                stream.mixer.videoIO.context = CIContext(eaglContext: self.context, options: convertToOptionalCIContextOptionDictionary(GLHKView.defaultOptions))
                 stream.mixer.videoIO.drawable = self
                 stream.mixer.startRunning()
             }
@@ -62,4 +64,15 @@ extension GLHKView: NetStreamDrawable {
             self.setNeedsDisplay()
         }
     }
+}
+
+// Helper function inserted by Swift 4.2 migrator.
+private func convertFromCIContextOption(_ input: CIContextOption) -> String {
+    return input.rawValue
+}
+
+// Helper function inserted by Swift 4.2 migrator.
+private func convertToOptionalCIContextOptionDictionary(_ input: [String: Any]?) -> [CIContextOption: Any]? {
+    guard let input = input else { return nil }
+    return Dictionary(uniqueKeysWithValues: input.map { key, value in (CIContextOption(rawValue: key), value) })
 }

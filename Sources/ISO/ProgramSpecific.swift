@@ -1,7 +1,7 @@
 import Foundation
 
 /**
- - seealso: https: //en.wikipedia.org/wiki/Program-specific_information
+ - seealso: https://en.wikipedia.org/wiki/Program-specific_information
  */
 protocol PSIPointer {
     var pointerField: UInt8 { get set }
@@ -32,11 +32,9 @@ class ProgramSpecific: PSIPointer, PSITableHeader, PSITableSyntax {
     static let reservedBits: UInt8 = 0x03
     static let defaultTableIDExtension: UInt16 = 1
 
-    let mutex: Mutex = Mutex()
-
     // MARK: PSIPointer
     var pointerField: UInt8 = 0
-    var pointerFillerBytes: Data = Data()
+    var pointerFillerBytes = Data()
 
     // MARK: PSITableHeader
     var tableID: UInt8 = 0
@@ -68,7 +66,7 @@ class ProgramSpecific: PSIPointer, PSITableHeader, PSITableSyntax {
 
     func arrayOfPackets(_ PID: UInt16) -> [TSPacket] {
         var packets: [TSPacket] = []
-        var packet: TSPacket = TSPacket()
+        var packet = TSPacket()
         packet.payloadUnitStartIndicator = true
         packet.PID = PID
         _ = packet.fill(data, useAdaptationField: false)
@@ -82,8 +80,8 @@ extension ProgramSpecific: DataConvertible {
         get {
             let tableData: Data = self.tableData
             sectionLength = UInt16(tableData.count) + 9
-            sectionSyntaxIndicator = tableData.count != 0
-            let buffer: ByteArray = ByteArray()
+            sectionSyntaxIndicator = !tableData.isEmpty
+            let buffer = ByteArray()
                 .writeUInt8(tableID)
                 .writeUInt16(
                     (sectionSyntaxIndicator ? 0x8000 : 0) |
@@ -104,7 +102,7 @@ extension ProgramSpecific: DataConvertible {
             return Data([pointerField] + pointerFillerBytes) + buffer.writeUInt32(crc32).data
         }
         set {
-            let buffer: ByteArray = ByteArray(data: newValue)
+            let buffer = ByteArray(data: newValue)
             do {
                 pointerField = try buffer.readUInt8()
                 pointerFillerBytes = try buffer.readBytes(Int(pointerField))
@@ -143,14 +141,14 @@ final class ProgramAssociationSpecific: ProgramSpecific {
 
     override var tableData: Data {
         get {
-            let buffer: ByteArray = ByteArray()
+            let buffer = ByteArray()
             for (number, programMapPID) in programs {
                 buffer.writeUInt16(number).writeUInt16(programMapPID | 0xe000)
             }
             return buffer.data
         }
         set {
-            let buffer: ByteArray = ByteArray(data: newValue)
+            let buffer = ByteArray(data: newValue)
             do {
                 for _ in 0..<newValue.count / 4 {
                     programs[try buffer.readUInt16()] = try buffer.readUInt16() & 0x1fff
@@ -183,11 +181,9 @@ final class ProgramMapSpecific: ProgramSpecific {
 
     override var tableData: Data {
         get {
-            mutex.lock()
-            defer { mutex.unlock() }
-            var bytes: Data = Data()
+            var bytes = Data()
             elementaryStreamSpecificData.sort { (lhs: ElementaryStreamSpecificData, rhs: ElementaryStreamSpecificData) -> Bool in
-                return lhs.elementaryPID < rhs.elementaryPID
+                lhs.elementaryPID < rhs.elementaryPID
             }
             for essd in elementaryStreamSpecificData {
                 bytes.append(essd.data)
@@ -199,9 +195,7 @@ final class ProgramMapSpecific: ProgramSpecific {
                 .data
         }
         set {
-            mutex.lock()
-            defer { mutex.unlock() }
-            let buffer: ByteArray = ByteArray(data: newValue)
+            let buffer = ByteArray(data: newValue)
             do {
                 PCRPID = try buffer.readUInt16() & 0x1fff
                 programInfoLength = try buffer.readUInt16() & 0x03ff
@@ -209,7 +203,7 @@ final class ProgramMapSpecific: ProgramSpecific {
                 var position: Int = 0
                 while 0 < buffer.bytesAvailable {
                     position = buffer.position
-                    guard let data: ElementaryStreamSpecificData = ElementaryStreamSpecificData(try buffer.readBytes(buffer.bytesAvailable)) else {
+                    guard let data = ElementaryStreamSpecificData(try buffer.readBytes(buffer.bytesAvailable)) else {
                         break
                     }
                     buffer.position = position + ElementaryStreamSpecificData.fixedHeaderSize + Int(data.ESInfoLength)
@@ -224,18 +218,18 @@ final class ProgramMapSpecific: ProgramSpecific {
 
 // MARK: -
 enum ElementaryStreamType: UInt8 {
-    case mpeg1Video          = 0x01
-    case mpeg2Video          = 0x02
-    case mpeg1Audio          = 0x03
-    case mpeg2Audio          = 0x04
-    case mpeg2TabledData     = 0x05
+    case mpeg1Video = 0x01
+    case mpeg2Video = 0x02
+    case mpeg1Audio = 0x03
+    case mpeg2Audio = 0x04
+    case mpeg2TabledData = 0x05
     case mpeg2PacketizedData = 0x06
 
-    case adtsaac  = 0x0F
-    case h263     = 0x10
+    case adtsaac = 0x0F
+    case h263 = 0x10
 
-    case h264     = 0x1B
-    case h265     = 0x24
+    case h264 = 0x1B
+    case h265 = 0x24
 }
 
 // MARK: -
@@ -245,7 +239,7 @@ struct ElementaryStreamSpecificData {
     var streamType: UInt8 = 0
     var elementaryPID: UInt16 = 0
     var ESInfoLength: UInt16 = 0
-    var ESDescriptors: Data = Data()
+    var ESDescriptors = Data()
 
     init() {
     }
@@ -267,7 +261,7 @@ extension ElementaryStreamSpecificData: DataConvertible {
                 .data
         }
         set {
-            let buffer: ByteArray = ByteArray(data: newValue)
+            let buffer = ByteArray(data: newValue)
             do {
                 streamType = try buffer.readUInt8()
                 elementaryPID = try buffer.readUInt16() & 0x0fff

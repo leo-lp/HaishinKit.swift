@@ -1,6 +1,6 @@
-import HaishinKit
-import Cocoa
 import AVFoundation
+import Cocoa
+import HaishinKit
 import VideoToolbox
 
 extension NSPopUpButton {
@@ -13,19 +13,19 @@ extension NSPopUpButton {
 }
 
 final class MainViewController: NSViewController {
-    var rtmpConnection: RTMPConnection = RTMPConnection()
+    var rtmpConnection = RTMPConnection()
     var rtmpStream: RTMPStream!
 
-    var httpService: HLSService = HLSService(
+    var httpService = HLSService(
         domain: "local", type: HTTPService.type, name: "", port: HTTPService.defaultPort
     )
-    var httpStream: HTTPStream = HTTPStream()
+    var httpStream = HTTPStream()
 
-    @IBOutlet var lfView: GLHKView!
-    @IBOutlet var audioPopUpButton: NSPopUpButton!
-    @IBOutlet var cameraPopUpButton: NSPopUpButton!
-    @IBOutlet var urlField: NSTextField!
-    @IBOutlet var segmentedControl: NSSegmentedControl!
+    @IBOutlet private weak var lfView: MTHKView!
+    @IBOutlet private weak var audioPopUpButton: NSPopUpButton!
+    @IBOutlet private weak var cameraPopUpButton: NSPopUpButton!
+    @IBOutlet private weak var urlField: NSTextField!
+    @IBOutlet private weak var segmentedControl: NSSegmentedControl!
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -45,10 +45,6 @@ final class MainViewController: NSViewController {
         lfView?.attachStream(rtmpStream)
     }
 
-    override func viewWillDisappear() {
-        super.viewWillDisappear()
-    }
-
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
         guard let keyPath: String = keyPath, Thread.isMainThread else {
             return
@@ -61,7 +57,7 @@ final class MainViewController: NSViewController {
         }
     }
 
-    @IBAction func publishOrStop(_ sender: NSButton) {
+    @IBAction private func publishOrStop(_ sender: NSButton) {
         // Publish
         if sender.title == "Publish" {
             sender.title = "Stop"
@@ -96,10 +92,12 @@ final class MainViewController: NSViewController {
         return
     }
 
-    @IBAction func selectAudio(_ sender: AnyObject) {
-        let device: AVCaptureDevice? = DeviceUtil.device(withLocalizedName:
-            audioPopUpButton.titleOfSelectedItem!, mediaType: .audio
-        )
+    @IBAction private func orientation(_ sender: AnyObject) {
+        lfView.rotate(byDegrees: 90)
+    }
+
+    @IBAction private func selectAudio(_ sender: AnyObject) {
+        let device: AVCaptureDevice? = DeviceUtil.device(withLocalizedName: audioPopUpButton.titleOfSelectedItem!, mediaType: .audio)
         switch segmentedControl.selectedSegment {
         case 0:
             rtmpStream.attachAudio(device)
@@ -112,10 +110,8 @@ final class MainViewController: NSViewController {
         }
     }
 
-    @IBAction func selectCamera(_ sender: AnyObject) {
-        let device: AVCaptureDevice? = DeviceUtil.device(withLocalizedName:
-            cameraPopUpButton.titleOfSelectedItem!, mediaType: .video
-        )
+    @IBAction private func selectCamera(_ sender: AnyObject) {
+        let device: AVCaptureDevice? = DeviceUtil.device(withLocalizedName: cameraPopUpButton.titleOfSelectedItem!, mediaType: .video)
         switch segmentedControl.selectedSegment {
         case 0:
             rtmpStream.attachCamera(device)
@@ -128,7 +124,7 @@ final class MainViewController: NSViewController {
         }
     }
 
-    @IBAction func modeChanged(_ sender: NSSegmentedControl) {
+    @IBAction private func modeChanged(_ sender: NSSegmentedControl) {
         switch sender.selectedSegment {
         case 0:
             httpStream.attachAudio(nil)
@@ -149,8 +145,9 @@ final class MainViewController: NSViewController {
         }
     }
 
-    @objc func rtmpStatusHandler(_ notification: Notification) {
-        let e: Event = Event.from(notification)
+    @objc
+    private func rtmpStatusHandler(_ notification: Notification) {
+        let e = Event.from(notification)
         guard
             let data: ASObject = e.data as? ASObject,
             let code: String = data["code"] as? String else {

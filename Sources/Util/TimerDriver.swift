@@ -17,12 +17,12 @@ public class TimerDriver: NSObject {
         didSet {
             oldValue?.invalidate()
             timer.map {
-                RunLoop.current.add($0, forMode: .commonModes)
+                RunLoop.current.add($0, forMode: RunLoop.Mode.common)
             }
         }
     }
 
-    public override var description: String {
+    override public var description: String {
         return Mirror(reflecting: self).description
     }
 
@@ -31,7 +31,8 @@ public class TimerDriver: NSObject {
         self.queue = withQueue
     }
 
-    @objc func on(timer: Timer) {
+    @objc
+    func on(timer: Timer) {
         guard nextFire <= mach_absolute_time() else {
             return
         }
@@ -48,11 +49,11 @@ public class TimerDriver: NSObject {
 
 extension TimerDriver: Running {
     // MARK: Running
-    public var running: Bool {
-        return runloop != nil
+    public var isRunning: Atomic<Bool> {
+        return .init(runloop != nil)
     }
 
-    final public func startRunning() {
+    public func startRunning() {
         DispatchQueue.global(qos: .userInteractive).async {
             guard self.runloop == nil else {
                 return
@@ -67,7 +68,7 @@ extension TimerDriver: Running {
         }
     }
 
-    final public func stopRunning() {
+    public func stopRunning() {
         guard let runloop: RunLoop = runloop else {
             return
         }

@@ -1,8 +1,8 @@
 import UIKit
 
 final class PreferenceViewController: UIViewController {
-    @IBOutlet var urlField: UITextField?
-    @IBOutlet var streamNameField: UITextField?
+    @IBOutlet private weak var urlField: UITextField?
+    @IBOutlet private weak var streamNameField: UITextField?
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -11,7 +11,7 @@ final class PreferenceViewController: UIViewController {
     }
 
     @IBAction func on(open: UIButton) {
-        let storyboard: UIStoryboard = UIStoryboard(name: "Main", bundle: nil)
+        let storyboard = UIStoryboard(name: "Main", bundle: nil)
         let controller: UIViewController = storyboard.instantiateViewController(withIdentifier: "PopUpLive")
         present(controller, animated: true, completion: nil)
     }

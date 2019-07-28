@@ -1,31 +1,93 @@
 import AVFoundation
 
 final class VideoIOComponent: IOComponent {
+    #if os(macOS)
+    static let defaultAttributes: [NSString: NSObject] = [
+        kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+        kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue,
+        kCVPixelBufferOpenGLCompatibilityKey: kCFBooleanTrue
+    ]
+    #else
+    static let defaultAttributes: [NSString: NSObject] = [
+        kCVPixelBufferPixelFormatTypeKey: NSNumber(value: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+        kCVPixelBufferMetalCompatibilityKey: kCFBooleanTrue,
+        kCVPixelBufferOpenGLESCompatibilityKey: kCFBooleanTrue
+    ]
+    #endif
+
     let lockQueue = DispatchQueue(label: "com.haishinkit.HaishinKit.VideoIOComponent.lock")
-    var context: CIContext?
+
+    var context: CIContext? {
+        didSet {
+            for effect in effects {
+                effect.ciContext = context
+            }
+        }
+    }
+
+    #if os(iOS) || os(macOS)
+    var drawable: NetStreamDrawable? = nil {
+        didSet {
+            drawable?.orientation = orientation
+        }
+    }
+    #else
     var drawable: NetStreamDrawable?
+    #endif
+
     var formatDescription: CMVideoFormatDescription? {
         didSet {
             decoder.formatDescription = formatDescription
         }
     }
-    lazy var encoder: H264Encoder = H264Encoder()
-    lazy var decoder: H264Decoder = H264Decoder()
+    lazy var encoder = H264Encoder()
+    lazy var decoder = H264Decoder()
     lazy var queue: DisplayLinkedQueue = {
-        let queue: DisplayLinkedQueue = DisplayLinkedQueue()
+        let queue = DisplayLinkedQueue()
         queue.delegate = self
         return queue
     }()
 
-    private(set) var effects: Set<VisualEffect> = []
+    private(set) var effects: Set<VideoEffect> = []
 
-#if os(iOS) || os(macOS)
+    private var extent = CGRect.zero {
+        didSet {
+            guard extent != oldValue else {
+                return
+            }
+            pixelBufferPool = nil
+        }
+    }
+
+    private var attributes: [NSString: NSObject] {
+        var attributes: [NSString: NSObject] = VideoIOComponent.defaultAttributes
+        attributes[kCVPixelBufferWidthKey] = NSNumber(value: Int(extent.width))
+        attributes[kCVPixelBufferHeightKey] = NSNumber(value: Int(extent.height))
+        return attributes
+    }
+
+    private var _pixelBufferPool: CVPixelBufferPool?
+    private var pixelBufferPool: CVPixelBufferPool! {
+        get {
+            if _pixelBufferPool == nil {
+                var pixelBufferPool: CVPixelBufferPool?
+                CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary?, &pixelBufferPool)
+                _pixelBufferPool = pixelBufferPool
+            }
+            return _pixelBufferPool!
+        }
+        set {
+            _pixelBufferPool = newValue
+        }
+    }
+
+    #if os(iOS) || os(macOS)
     var fps: Float64 = AVMixer.defaultFPS {
         didSet {
             guard
                 let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 let data = device.actualFPS(fps) else {
-                return
+                    return
             }
 
             fps = data.fps
@@ -53,6 +115,7 @@ final class VideoIOComponent: IOComponent {
 
     var orientation: AVCaptureVideoOrientation = .portrait {
         didSet {
+            drawable?.orientation = orientation
             guard orientation != oldValue else {
                 return
             }
@@ -61,8 +124,10 @@ final class VideoIOComponent: IOComponent {
                 if torch {
                     setTorchMode(.on)
                 }
+                #if os(iOS)
+                connection.preferredVideoStabilizationMode = preferredVideoStabilizationMode
+                #endif
             }
-            drawable?.orientation = orientation
         }
     }
 
@@ -83,8 +148,8 @@ final class VideoIOComponent: IOComponent {
             let focusMode: AVCaptureDevice.FocusMode = continuousAutofocus ? .continuousAutoFocus : .autoFocus
             guard let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 device.isFocusModeSupported(focusMode) else {
-                logger.warn("focusMode(\(focusMode.rawValue)) is not supported")
-                return
+                    logger.warn("focusMode(\(focusMode.rawValue)) is not supported")
+                    return
             }
             do {
                 try device.lockForConfiguration()
@@ -102,7 +167,7 @@ final class VideoIOComponent: IOComponent {
                 let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 let point: CGPoint = focusPointOfInterest,
                 device.isFocusPointOfInterestSupported else {
-                return
+                    return
             }
             do {
                 try device.lockForConfiguration()
@@ -121,7 +186,7 @@ final class VideoIOComponent: IOComponent {
                 let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 let point: CGPoint = exposurePointOfInterest,
                 device.isExposurePointOfInterestSupported else {
-                return
+                    return
             }
             do {
                 try device.lockForConfiguration()
@@ -142,8 +207,8 @@ final class VideoIOComponent: IOComponent {
             let exposureMode: AVCaptureDevice.ExposureMode = continuousExposure ? .continuousAutoExposure : .autoExpose
             guard let device: AVCaptureDevice = (input as? AVCaptureDeviceInput)?.device,
                 device.isExposureModeSupported(exposureMode) else {
-                logger.warn("exposureMode(\(exposureMode.rawValue)) is not supported")
-                return
+                    logger.warn("exposureMode(\(exposureMode.rawValue)) is not supported")
+                    return
             }
             do {
                 try device.lockForConfiguration()
@@ -154,6 +219,19 @@ final class VideoIOComponent: IOComponent {
             }
         }
     }
+
+    #if os(iOS)
+    var preferredVideoStabilizationMode: AVCaptureVideoStabilizationMode = .auto {
+        didSet {
+            guard preferredVideoStabilizationMode != oldValue else {
+                return
+            }
+            for connection in output.connections {
+                connection.preferredVideoStabilizationMode = preferredVideoStabilizationMode
+            }
+        }
+    }
+    #endif
 
     private var _output: AVCaptureVideoDataOutput?
     var output: AVCaptureVideoDataOutput! {
@@ -190,7 +268,7 @@ final class VideoIOComponent: IOComponent {
             }
         }
     }
-#endif
+    #endif
 
     #if os(iOS)
     var screen: ScreenCaptureSession? = nil {
@@ -213,13 +291,15 @@ final class VideoIOComponent: IOComponent {
         encoder.lockQueue = lockQueue
         decoder.delegate = self
         #if os(iOS)
-            if let orientation: AVCaptureVideoOrientation = DeviceUtil.videoOrientation(by: UIDevice.current.orientation) {
-                self.orientation = orientation
-                }
+        if let orientation: AVCaptureVideoOrientation = DeviceUtil.videoOrientation(by: UIDevice.current.orientation) {
+            self.orientation = orientation
+        } else if let defaultOrientation = RTMPStream.defaultOrientation {
+            self.orientation = defaultOrientation
+        }
         #endif
     }
 
-#if os(iOS) || os(macOS)
+    #if os(iOS) || os(macOS)
     func attachCamera(_ camera: AVCaptureDevice?) throws {
         guard let mixer: AVMixer = mixer else {
             return
@@ -244,9 +324,16 @@ final class VideoIOComponent: IOComponent {
 
         input = try AVCaptureDeviceInput(device: camera)
         mixer.session.addOutput(output)
-        for connection in output.connections where connection.isVideoOrientationSupported {
-            connection.videoOrientation = orientation
+
+        for connection in output.connections {
+            if connection.isVideoOrientationSupported {
+                connection.videoOrientation = orientation
+            }
+            #if os(iOS)
+            connection.preferredVideoStabilizationMode = preferredVideoStabilizationMode
+            #endif
         }
+
         output.setSampleBufferDelegate(self, queue: lockQueue)
 
         fps *= 1
@@ -267,79 +354,90 @@ final class VideoIOComponent: IOComponent {
             logger.error("while setting torch: \(error)")
         }
     }
+
     func dispose() {
         if Thread.isMainThread {
             self.drawable?.attachStream(nil)
         } else {
-          DispatchQueue.main.sync {
-              self.drawable?.attachStream(nil)
-          }
+            DispatchQueue.main.sync {
+                self.drawable?.attachStream(nil)
+            }
         }
 
         input = nil
         output = nil
     }
-#else
+    #else
     func dispose() {
         if Thread.isMainThread {
             self.drawable?.attachStream(nil)
         } else {
-          DispatchQueue.main.sync {
-              self.drawable?.attachStream(nil)
-          }
+            DispatchQueue.main.sync {
+                self.drawable?.attachStream(nil)
+            }
         }
     }
-#endif
+    #endif
 
     func appendSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
-        guard var buffer: CVImageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+        guard let buffer: CVImageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
             return
         }
-        CVPixelBufferLockBaseAddress(buffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+
+        var imageBuffer: CVImageBuffer?
+
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer {
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            if let imageBuffer = imageBuffer {
+                CVPixelBufferUnlockBaseAddress(imageBuffer, [])
+            }
+        }
 
         if drawable != nil || !effects.isEmpty {
-            let image: CIImage = effect(buffer)
+            let image: CIImage = effect(buffer, info: sampleBuffer)
+            extent = image.extent
             if !effects.isEmpty {
                 #if os(macOS)
-                // green edge hack for OSX
-                buffer = CVPixelBuffer.create(image)!
+                CVPixelBufferPoolCreatePixelBuffer(nil, pixelBufferPool, &imageBuffer)
+                #else
+                if buffer.width != Int(extent.width) || buffer.height != Int(extent.height) {
+                    CVPixelBufferPoolCreatePixelBuffer(nil, pixelBufferPool, &imageBuffer)
+                }
                 #endif
-                context?.render(image, to: buffer)
+                if let imageBuffer = imageBuffer {
+                    CVPixelBufferLockBaseAddress(imageBuffer, [])
+                }
+                context?.render(image, to: imageBuffer ?? buffer)
             }
             drawable?.draw(image: image)
         }
 
         encoder.encodeImageBuffer(
-            buffer,
+            imageBuffer ?? buffer,
             presentationTimeStamp: sampleBuffer.presentationTimeStamp,
             duration: sampleBuffer.duration
         )
 
-        mixer?.recorder.appendSampleBuffer(sampleBuffer, mediaType: .video)
+        mixer?.recorder.appendPixelBuffer(imageBuffer ?? buffer, withPresentationTime: sampleBuffer.presentationTimeStamp)
     }
 
-    func effect(_ buffer: CVImageBuffer) -> CIImage {
-        var image: CIImage = CIImage(cvPixelBuffer: buffer)
+    @inline(__always)
+    func effect(_ buffer: CVImageBuffer, info: CMSampleBuffer?) -> CIImage {
+        var image = CIImage(cvPixelBuffer: buffer)
         for effect in effects {
-            image = effect.execute(image)
+            image = effect.execute(image, info: info)
         }
         return image
     }
 
-    func registerEffect(_ effect: VisualEffect) -> Bool {
-        objc_sync_enter(effects)
-        defer {
-            objc_sync_exit(effects)
-        }
+    func registerEffect(_ effect: VideoEffect) -> Bool {
+        effect.ciContext = context
         return effects.insert(effect).inserted
     }
 
-    func unregisterEffect(_ effect: VisualEffect) -> Bool {
-        objc_sync_enter(effects)
-        defer {
-            objc_sync_exit(effects)
-        }
+    func unregisterEffect(_ effect: VideoEffect) -> Bool {
+        effect.ciContext = nil
         return effects.remove(effect) != nil
     }
 }
@@ -361,7 +459,11 @@ extension VideoIOComponent: VideoDecoderDelegate {
 extension VideoIOComponent: DisplayLinkedQueueDelegate {
     // MARK: DisplayLinkedQueue
     func queue(_ buffer: CMSampleBuffer) {
-        mixer?.audioIO.playback.startQueueIfNeed()
         drawable?.draw(image: CIImage(cvPixelBuffer: buffer.imageBuffer!))
+        mixer?.delegate?.didOutputVideo(buffer)
+    }
+
+    func empty() {
+        mixer?.didBufferEmpty(self)
     }
 }

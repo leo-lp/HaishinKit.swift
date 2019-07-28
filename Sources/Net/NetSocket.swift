@@ -1,10 +1,10 @@
 import Foundation
 
 open class NetSocket: NSObject {
-    static public let defaultTimeout: Int64 = 15 // sec
-    static public let defaultWindowSizeC: Int = Int(UInt16.max)
+    public static let defaultTimeout: Int64 = 15 // sec
+    public static let defaultWindowSizeC = Int(UInt16.max)
 
-    public var inputBuffer: Data = Data()
+    public var inputBuffer = Data()
     public var timeout: Int64 = NetSocket.defaultTimeout
     public internal(set) var connected: Bool = false
     public var windowSizeC: Int = NetSocket.defaultWindowSizeC
@@ -40,11 +40,11 @@ open class NetSocket: NSObject {
     }
 
     @discardableResult
-    final public func doOutput(data: Data, locked: UnsafeMutablePointer<UInt32>? = nil) -> Int {
+    public func doOutput(data: Data, locked: UnsafeMutablePointer<UInt32>? = nil) -> Int {
         OSAtomicAdd64(Int64(data.count), &queueBytesOut)
         outputQueue.async {
-            data.withUnsafeBytes { (buffer: UnsafePointer<UInt8>) -> Void in
-                self.doOutputProcess(buffer, maxLength: data.count)
+            data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> Void in
+                self.doOutputProcess(buffer.baseAddress?.assumingMemoryBound(to: UInt8.self), maxLength: data.count)
             }
             if locked != nil {
                 OSAtomicAnd32Barrier(0, locked!)
@@ -60,7 +60,7 @@ open class NetSocket: NSObject {
                 defer {
                     fileHandle.closeFile()
                 }
-                let endOfFile: Int = Int(fileHandle.seekToEndOfFile())
+                let endOfFile = Int(fileHandle.seekToEndOfFile())
                 for i in 0..<Int(endOfFile / length) {
                     fileHandle.seek(toFileOffset: UInt64(i * length))
                     self.doOutputProcess(fileHandle.readData(ofLength: length))
@@ -76,13 +76,13 @@ open class NetSocket: NSObject {
     }
 
     final func doOutputProcess(_ data: Data) {
-        data.withUnsafeBytes { (buffer: UnsafePointer<UInt8>) -> Void in
-            doOutputProcess(buffer, maxLength: data.count)
+        data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) -> Void in
+            doOutputProcess(buffer.baseAddress?.assumingMemoryBound(to: UInt8.self), maxLength: data.count)
         }
     }
 
-    final func doOutputProcess(_ buffer: UnsafePointer<UInt8>, maxLength: Int) {
-        guard let outputStream: OutputStream = outputStream else {
+    final func doOutputProcess(_ buffer: UnsafePointer<UInt8>?, maxLength: Int) {
+        guard let outputStream: OutputStream = outputStream, let buffer = buffer else {
             return
         }
         var total: Int = 0
@@ -133,11 +133,11 @@ open class NetSocket: NSObject {
         runloop = .current
 
         inputStream.delegate = self
-        inputStream.schedule(in: runloop!, forMode: .defaultRunLoopMode)
+        inputStream.schedule(in: runloop!, forMode: RunLoop.Mode.default)
         inputStream.setProperty(securityLevel.rawValue, forKey: .socketSecurityLevelKey)
 
         outputStream.delegate = self
-        outputStream.schedule(in: runloop!, forMode: .defaultRunLoopMode)
+        outputStream.schedule(in: runloop!, forMode: RunLoop.Mode.default)
         outputStream.setProperty(securityLevel.rawValue, forKey: .socketSecurityLevelKey)
 
         inputStream.open()
@@ -158,11 +158,11 @@ open class NetSocket: NSObject {
 
     func deinitConnection(isDisconnected: Bool) {
         inputStream?.close()
-        inputStream?.remove(from: runloop!, forMode: .defaultRunLoopMode)
+        inputStream?.remove(from: runloop!, forMode: RunLoop.Mode.default)
         inputStream?.delegate = nil
         inputStream = nil
         outputStream?.close()
-        outputStream?.remove(from: runloop!, forMode: .defaultRunLoopMode)
+        outputStream?.remove(from: runloop!, forMode: RunLoop.Mode.default)
         outputStream?.delegate = nil
         outputStream = nil
         buffer?.deinitialize(count: windowSizeC)

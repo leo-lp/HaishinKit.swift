@@ -8,6 +8,10 @@ struct AVCFormatStream {
         self.data = data
     }
 
+    init?(bytes: UnsafePointer<UInt8>, count: UInt32) {
+        self.init(data: Data(bytes: bytes, count: Int(count)))
+    }
+
     init?(data: Data?) {
         guard let data = data else {
             return nil
@@ -41,7 +45,7 @@ struct AVCConfigurationRecord {
         guard let formatDescription = formatDescription else {
             return nil
         }
-        if let atoms: NSDictionary = CMFormatDescriptionGetExtension(formatDescription, "SampleDescriptionExtensionAtoms" as CFString) as? NSDictionary {
+        if let atoms: NSDictionary = CMFormatDescriptionGetExtension(formatDescription, extensionKey: "SampleDescriptionExtensionAtoms" as CFString) as? NSDictionary {
             return atoms["avcC"] as? Data
         }
         return nil
@@ -88,12 +92,12 @@ struct AVCConfigurationRecord {
             pictureParameterSets[0].count
         ]
         return CMVideoFormatDescriptionCreateFromH264ParameterSets(
-            kCFAllocatorDefault,
-            2,
-            &parameterSetPointers,
-            &parameterSetSizes,
-            naluLength,
-            formatDescriptionOut
+            allocator: kCFAllocatorDefault,
+            parameterSetCount: 2,
+            parameterSetPointers: &parameterSetPointers,
+            parameterSetSizes: &parameterSetSizes,
+            nalUnitHeaderLength: naluLength,
+            formatDescriptionOut: formatDescriptionOut
         )
     }
 }
@@ -102,7 +106,7 @@ extension AVCConfigurationRecord: DataConvertible {
     // MARK: DataConvertible
     var data: Data {
         get {
-            let buffer: ByteArray = ByteArray()
+            let buffer = ByteArray()
                 .writeUInt8(configurationVersion)
                 .writeUInt8(AVCProfileIndication)
                 .writeUInt8(profileCompatibility)
@@ -123,7 +127,7 @@ extension AVCConfigurationRecord: DataConvertible {
             return buffer.data
         }
         set {
-            let buffer: ByteArray = ByteArray(data: newValue)
+            let buffer = ByteArray(data: newValue)
             do {
                 configurationVersion = try buffer.readUInt8()
                 AVCProfileIndication = try buffer.readUInt8()
@@ -133,12 +137,12 @@ extension AVCConfigurationRecord: DataConvertible {
                 numOfSequenceParameterSetsWithReserved = try buffer.readUInt8()
                 let numOfSequenceParameterSets: UInt8 = numOfSequenceParameterSetsWithReserved & ~AVCConfigurationRecord.reserveNumOfSequenceParameterSets
                 for _ in 0..<numOfSequenceParameterSets {
-                    let length: Int = Int(try buffer.readUInt16())
+                    let length = Int(try buffer.readUInt16())
                     sequenceParameterSets.append(try buffer.readBytes(length).bytes)
                 }
                 let numPictureParameterSets: UInt8 = try buffer.readUInt8()
                 for _ in 0..<numPictureParameterSets {
-                    let length: Int = Int(try buffer.readUInt16())
+                    let length = Int(try buffer.readUInt16())
                     pictureParameterSets.append(try buffer.readBytes(length).bytes)
                 }
             } catch {

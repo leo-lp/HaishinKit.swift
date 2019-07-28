@@ -1,19 +1,11 @@
 import HaishinKit
-import VideoToolbox
-import ReplayKit
 import Logboard
+import ReplayKit
+import VideoToolbox
 
 @available(iOS 10.0, *)
 open class SampleHandler: RPBroadcastSampleHandler {
-    private var broadcaster: RTMPBroadcaster = RTMPBroadcaster()
-
-    var spliter: SoundSpliter?
-
-    override init() {
-        super.init()
-        spliter = SoundSpliter()
-        spliter?.delegate = self
-    }
+    private var broadcaster = RTMPBroadcaster()
 
     override open func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         /*
@@ -47,17 +39,11 @@ open class SampleHandler: RPBroadcastSampleHandler {
             }
             broadcaster.appendSampleBuffer(sampleBuffer, withType: .video)
         case .audioApp:
-            // spliter?.appendSampleBuffer(sampleBuffer)
             break
         case .audioMic:
             broadcaster.appendSampleBuffer(sampleBuffer, withType: .audio)
+        @unknown default:
+            break
         }
-    }
-}
-
-extension SampleHandler: SoundSpliterDelegate {
-    // MARK: SoundSpliterDelegate
-    public func outputSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
-        broadcaster.appendSampleBuffer(sampleBuffer, withType: .audio)
     }
 }

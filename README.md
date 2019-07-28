@@ -11,7 +11,7 @@
 ### RTMP
 - [x] Authentication
 - [x] Publish and Recording (H264/AAC)
-- [x] _Playback (Technical Preview)_
+- [x] _Playback (Beta)_
 - [x] Adaptive bitrate streaming
   - [x] Handling (see also [#126](/../../issues/126))
   - [x] Automatic drop frames
@@ -20,8 +20,8 @@
   - [ ] AMF3
 - [x] SharedObject
 - [x] RTMPS
-  - [x] Native (RTMP over SSL/TSL)
-  - [x] _Tunneled (RTMPT over SSL/TSL) (Technical Preview)_
+  - [x] Native (RTMP over SSL/TLS)
+  - [x] _Tunneled (RTMPT over SSL/TLS) (Technical Preview)_
 - [x] _RTMPT (Technical Preview)_
 - [x] _ReplayKit Live as a Broadcast Upload Extension (Technical Preview)_
 
@@ -45,22 +45,27 @@
 - [x] Support "Allow app extension API only" option
 - [x] Support GPUImage framework (~> 0.5.12)
   - https://github.com/shogo4405/GPUHaishinKit.swift/blob/master/README.md
-- [ ] ~~Objectiv-C Bridging~~
+- [ ] ~~Objective-C Bridging~~
 
 ## Requirements
 |-|iOS|OSX|tvOS|XCode|Swift|CocoaPods|Carthage|
 |:----:|:----:|:----:|:----:|:----:|:----:|:----:|:----:|
-|0.9.0|8.0+|10.11+|10.2+|9.3+|4.1|1.5.0+|0.29.0+|
-|0.8.0|8.0+|10.11+|10.2+|9.0+|4.0+|1.2.0+|0.20.0+|
-|0.7.0|8.0+|10.11+|10.2+|8.3+|3.1|1.2.0+|0.20.0+|
+0.11.0+|8.0+|10.11+|10.2+|10.0+|5.0|1.5.0+|0.29.0+|
+|0.10.0+|8.0+|10.11+|10.2+|10.0+|4.2|1.5.0+|0.29.0+|
 
 ## Cocoa Keys
-iOS10.0+
+Please contains Info.plist.
+
+iOS 10.0+
+* NSMicrophoneUsageDescription
+* NSCameraUsageDescription
+
+macOS 10.14+
 * NSMicrophoneUsageDescription
 * NSCameraUsageDescription
 
 ## Installation
-*Please set up your project Swift 4.1.*
+*Please set up your project Swift 5.0. *
 
 ### CocoaPods
 ```rb
@@ -68,7 +73,7 @@ source 'https://github.com/CocoaPods/Specs.git'
 use_frameworks!
 
 def import_pods
-    pod 'HaishinKit', '~> 0.9.2'
+    pod 'HaishinKit', '~> 0.11.5'
 end
 
 target 'Your Target'  do
@@ -78,26 +83,34 @@ end
 ```
 ### Carthage
 ```
-github "shogo4405/HaishinKit.swift" ~> 0.9.2
+github "shogo4405/HaishinKit.swift" ~> 0.11.5
 ```
 
 ## License
 BSD-3-Clause
 
 ## Donation
+Paypal
+ - https://www.paypal.me/shogo4405
+
 Bitcoin
 ```txt
-17N3qWCKjwJrWrDuyeHaqWkZYnJqX7igXN
+1LP7Jo4VwAFdEisJSykBAtUyAusZjozSpw
 ```
 
 ## Prerequisites
 Make sure you setup and activate your AVAudioSession.
 ```swift
 import AVFoundation
-let session: AVAudioSession = AVAudioSession.sharedInstance()
+let session = AVAudioSession.sharedInstance()
 do {
     try session.setPreferredSampleRate(44_100)
-    try session.setCategory(AVAudioSessionCategoryPlayAndRecord, with: .allowBluetooth)
+    // https://stackoverflow.com/questions/51010390/avaudiosession-setcategory-swift-4-2-ios-12-play-sound-on-silent
+    if #available(iOS 10.0, *) {
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+    } else {
+        session.perform(NSSelectorFromString("setCategory:withOptions:error:"), with: AVAudioSession.Category.playAndRecord, with:  [AVAudioSession.CategoryOptions.allowBluetooth])
+    }
     try session.setMode(AVAudioSessionModeDefault)
     try session.setActive(true)
 } catch {
@@ -106,8 +119,8 @@ do {
 ## RTMP Usage
 Real Time Messaging Protocol (RTMP).
 ```swift
-let rtmpConnection:RTMPConnection = RTMPConnection()
-let rtmpStream: RTMPStream = RTMPStream(connection: rtmpConnection)
+let rtmpConnection = RTMPConnection()
+let rtmpStream = RTMPStream(connection: rtmpConnection)
 rtmpStream.attachAudio(AVCaptureDevice.default(for: AVMediaType.audio)) { error in
     // print(error)
 }
@@ -127,17 +140,22 @@ rtmpStream.publish("streamName")
 // if you want to record a stream.
 // rtmpStream.publish("streamName", type: .localRecord)
 ```
+
 ### Settings
 ```swift
 let sampleRate:Double = 44_100
 
 // see: #58
 #if(iOS)
-let session: AVAudioSession = AVAudioSession.sharedInstance()
+let session = AVAudioSession.sharedInstance()
 do {
     try session.setPreferredSampleRate(44_100)
-    try session.setCategory(AVAudioSessionCategoryPlayAndRecord, with: .allowBluetooth)
-    try session.setMode(AVAudioSessionModeDefault)
+    // https://stackoverflow.com/questions/51010390/avaudiosession-setcategory-swift-4-2-ios-12-play-sound-on-silent
+    if #available(iOS 10.0, *) {
+        try session.setCategory(.playAndRecord, mode: .default, options: [.allowBluetooth])
+    } else {
+        session.perform(NSSelectorFromString("setCategory:withOptions:error:"), with: AVAudioSession.Category.playAndRecord, with:  [AVAudioSession.CategoryOptions.allowBluetooth])
+    }
     try session.setActive(true)
 } catch {
 }
@@ -150,6 +168,7 @@ rtmpStream.captureSettings = [
     "sessionPreset": AVCaptureSession.Preset.medium.rawValue, // input video width/height
     "continuousAutofocus": false, // use camera autofocus mode
     "continuousExposure": false, //  use camera exposure mode
+    // "preferredVideoStabilizationMode": AVCaptureVideoStabilizationMode.auto.rawValue
 ]
 rtmpStream.audioSettings = [
     "muted": false, // mute audio
@@ -192,7 +211,7 @@ rtmpStream.attachAudio(AVCaptureDevice.default(for: AVMediaType.audio), automati
 ```
 ### Authentication
 ```swift
-var rtmpConnection:RTMPConnection = RTMPConnection()
+var rtmpConnection = RTMPConnection()
 rtmpConnection.connect("rtmp://username:password@localhost/appName/instanceName")
 ```
 
@@ -207,20 +226,20 @@ rtmpStream.attachScreen(AVCaptureScreenInput(displayID: CGMainDisplayID()))
 ## HTTP Usage
 HTTP Live Streaming (HLS). Your iPhone/Mac become a IP Camera. Basic snipet. You can see http://ip.address:8080/hello/playlist.m3u8 
 ```swift
-var httpStream:HTTPStream = HTTPStream()
+var httpStream = HTTPStream()
 httpStream.attachCamera(DeviceUtil.device(withPosition: .back))
 httpStream.attachAudio(AVCaptureDevice.defaultDevice(withMediaType: AVMediaTypeAudio))
 httpStream.publish("hello")
 
-var lfView:LFView = LFView(frame: view.bounds)
-lfView.attachStream(httpStream)
+var hkView = HKView(frame: view.bounds)
+hkView.attachStream(httpStream)
 
-var httpService:HLSService = HLSService(domain: "", type: "_http._tcp", name: "lf", port: 8080)
+var httpService = HLSService(domain: "", type: "_http._tcp", name: "HaishinKit", port: 8080)
 httpService.startRunning()
 httpService.addHTTPStream(httpStream)
 
 // add ViewController#view
-view.addSubview(lfView)
+view.addSubview(hkView)
 ```
 
 ## FAQ
@@ -231,8 +250,9 @@ carthage update
 ```
 
 ### Do you support me via Email?
-Yes. Consulting fee is $50/1 incident. I don't recommend.
+Yes. Consulting fee is [$50](https://www.paypal.me/shogo4405/50USD)/1 incident. I don't recommend. 
 Please consider to use Issues.
+
 
 ## Reference
 * Adobe’s Real Time Messaging Protocol
